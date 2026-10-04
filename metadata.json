@@ -2,5 +2,7 @@
   "name": "TalentFlow AI - Hiring Portal & Autonomous Screening Engine",
   "description": "AI-powered hiring portal with real-time autonomous candidate screening, automated scorecards, interview scheduling, and enterprise architecture blueprint.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

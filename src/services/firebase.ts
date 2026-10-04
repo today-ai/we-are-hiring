@@ -74,12 +74,30 @@ export async function signInWithGoogle(): Promise<UserProfile | null> {
     const user = result.user;
     const isManager = isPortalManagerEmail(user.email);
 
+    // Read existing profile to preserve saved contact number and details
+    let existingData: Partial<UserProfile> = {};
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const snap = await getDoc(userDocRef);
+      if (snap.exists()) {
+        existingData = snap.data() as UserProfile;
+      }
+    } catch (e) {
+      console.warn('Could not read existing user doc:', e);
+    }
+
     const profile: UserProfile = {
       uid: user.uid,
       email: user.email || '',
-      displayName: user.displayName || user.email?.split('@')[0] || 'User',
-      photoURL: user.photoURL || undefined,
-      role: isManager ? 'admin' : (user.email?.includes('recruiter') ? 'recruiter' : 'candidate'),
+      displayName: existingData.displayName || user.displayName || user.email?.split('@')[0] || 'User',
+      photoURL: user.photoURL || existingData.photoURL || undefined,
+      phoneNumber: existingData.phoneNumber || (isManager ? '+92 300 0000000' : ''),
+      whatsappAvailable: existingData.whatsappAvailable ?? true,
+      city: existingData.city || 'Karachi',
+      linkedInUrl: existingData.linkedInUrl || '',
+      portfolioUrl: existingData.portfolioUrl || '',
+      bio: existingData.bio || '',
+      role: isManager ? 'admin' : (existingData.role || (user.email?.includes('recruiter') ? 'recruiter' : 'candidate')),
       isPortalManager: isManager,
       permissions: isManager ? [
         'manage_jobs',
@@ -90,7 +108,7 @@ export async function signInWithGoogle(): Promise<UserProfile | null> {
         'override_scores',
         'delete_records',
         'manage_slots'
-      ] : undefined
+      ] : existingData.permissions
     };
     await syncUserProfile(profile);
     return profile;
@@ -102,6 +120,19 @@ export async function signInWithGoogle(): Promise<UserProfile | null> {
 
 export async function signOutUser(): Promise<void> {
   await signOut(auth);
+}
+
+export async function saveUserProfile(updatedFields: Partial<UserProfile> & { uid: string }): Promise<void> {
+  try {
+    const userDocRef = doc(db, 'users', updatedFields.uid);
+    await setDoc(userDocRef, {
+      ...updatedFields,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Error saving user profile to Firestore:', err);
+    throw err;
+  }
 }
 
 export function subscribeToAuth(callback: (user: UserProfile | null) => void) {

@@ -29,6 +29,7 @@ interface ApplicationModalProps {
   currentUserId?: string;
   currentUserEmail?: string;
   currentUserName?: string;
+  currentUserPhone?: string;
 }
 
 export const ApplicationModal: React.FC<ApplicationModalProps> = ({
@@ -37,11 +38,12 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   onSubmitSuccess,
   currentUserId,
   currentUserEmail,
-  currentUserName
+  currentUserName,
+  currentUserPhone
 }) => {
   const [fullName, setFullName] = useState(currentUserName || '');
   const [email, setEmail] = useState(currentUserEmail || '');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(currentUserPhone || '');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
   const [yearsOfExperience, setYearsOfExperience] = useState<number>(5);

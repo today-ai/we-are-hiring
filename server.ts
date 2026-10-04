@@ -1,5 +1,7 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
@@ -763,12 +765,14 @@ function generateHeuristicScorecard(jobTitle: string, transcript: any[]) {
 }
 
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const distPath = path.resolve(__dirname, 'dist');
+  const hasDist = fs.existsSync(distPath);
+  const isProduction = process.env.NODE_ENV === 'production' || hasDist;
 
-  if (isProduction) {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+  if (isProduction && hasDist) {
+    app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.resolve(distPath, 'index.html'));
     });
   } else {
     const vite = await createViteServer({
@@ -779,7 +783,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`AIREV Emerging Center Portal running at http://0.0.0.0:${PORT}`);
+    console.log(`AIREV Emerging Center Portal running on http://0.0.0.0:${PORT}`);
   });
 }
 

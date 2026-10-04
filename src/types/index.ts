@@ -64,9 +64,17 @@ export interface UserProfile {
   email: string;
   displayName: string;
   photoURL?: string;
+  phoneNumber?: string;
+  whatsappAvailable?: boolean;
+  city?: string;
+  linkedInUrl?: string;
+  portfolioUrl?: string;
+  bio?: string;
   role: 'admin' | 'portal_manager' | 'recruiter' | 'candidate';
   isPortalManager?: boolean;
   permissions?: string[];
+  updatedAt?: string;
+  lastLoginAt?: string;
 }
 
 export interface CalendarSlot {

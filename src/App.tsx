@@ -19,6 +19,7 @@ import { InterviewSchedulerModal } from './components/InterviewSchedulerModal';
 import { CandidateCalendarPortal } from './components/CandidateCalendarPortal';
 import { CandidateResourceCenter } from './components/CandidateResourceCenter';
 import { ArchitectureBlueprint } from './components/ArchitectureBlueprint';
+import { ProfileManagementModal } from './components/ProfileManagementModal';
 import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { 
   subscribeToAuth, 
@@ -56,6 +57,7 @@ export default function App() {
   // Recruiter Scheduler Modal state
   const [schedulingCandidate, setSchedulingCandidate] = useState<CandidateApplication | null>(null);
   const [prepTargetJobId, setPrepTargetJobId] = useState<string>(OPEN_JOBS[0].id);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // Transactional email preview
   const [previewEmail, setPreviewEmail] = useState<EmailDispatchLog | null>(null);
@@ -336,6 +338,7 @@ export default function App() {
         currentUser={currentUser}
         onSignInWithGoogle={handleGoogleSignIn}
         onSignOut={handleSignOut}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
       />
 
       {/* Floating Notification Toast */}
@@ -443,6 +446,23 @@ export default function App() {
           currentUserId={currentUser?.uid}
           currentUserEmail={currentUser?.email}
           currentUserName={currentUser?.displayName}
+          currentUserPhone={currentUser?.phoneNumber}
+        />
+      )}
+
+      {/* Next-Level Profile & Contact Number Management Modal */}
+      {isProfileModalOpen && currentUser && (
+        <ProfileManagementModal
+          user={currentUser}
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          onProfileUpdated={(updatedProfile) => {
+            setCurrentUser(updatedProfile);
+            setLatestNotification({
+              title: 'Profile & Contact Number Updated',
+              subtitle: `Contact number ${updatedProfile.phoneNumber || ''} saved to Cloud Firestore.`
+            });
+          }}
         />
       )}
 
