@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile authenticated with Google Sign-In via Firebase Auth",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["candidate", "recruiter", "interviewer"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLoginAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "CandidateApplication": {
+      "title": "CandidateApplication",
+      "description": "Candidate job application with extracted resume text and AI summary",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateUid": { "type": "string" },
+        "jobId": { "type": "string" },
+        "jobTitle": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "linkedinUrl": { "type": "string" },
+        "portfolioUrl": { "type": "string" },
+        "yearsOfExperience": { "type": "number" },
+        "resumeFileName": { "type": "string" },
+        "resumeFileSize": { "type": "string" },
+        "resumeText": { "type": "string" },
+        "resumeAiSummary": { "type": "string" },
+        "coverLetter": { "type": "string" },
+        "status": { "type": "string", "enum": ["Applied", "Screening", "Evaluated", "Shortlisted", "Hold", "Scheduled", "Rejected"] },
+        "appliedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "jobId", "fullName", "email"]
+    },
+    "InterviewSession": {
+      "title": "InterviewSession",
+      "description": "Autonomous AI Screening session with dynamic transcripts and scores",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "candidateEmail": { "type": "string", "format": "email" },
+        "jobId": { "type": "string" },
+        "jobTitle": { "type": "string" },
+        "status": { "type": "string", "enum": ["in_progress", "completed"] },
+        "currentQuestionIndex": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "candidateId", "status"]
+    },
+    "ScheduledInterview": {
+      "title": "ScheduledInterview",
+      "description": "Calendar scheduled interview between candidate and human team or AI",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "candidateName": { "type": "string" },
+        "candidateEmail": { "type": "string", "format": "email" },
+        "jobTitle": { "type": "string" },
+        "interviewType": { "type": "string" },
+        "interviewerName": { "type": "string" },
+        "interviewerRole": { "type": "string" },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "timezone": { "type": "string" },
+        "meetingLink": { "type": "string" },
+        "calendarProvider": { "type": "string", "enum": ["google", "outlook", "talentflow"] },
+        "calendarEventId": { "type": "string" },
+        "status": { "type": "string", "enum": ["confirmed", "rescheduled", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "candidateEmail", "date", "timeSlot"]
+    },
+    "CalendarSlot": {
+      "title": "CalendarSlot",
+      "description": "Available live calendar interview slot for self-scheduling",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "interviewType": { "type": "string" },
+        "interviewerName": { "type": "string" },
+        "interviewerRole": { "type": "string" },
+        "isBooked": { "type": "boolean" },
+        "bookedByEmail": { "type": "string" }
+      },
+      "required": ["id", "date", "timeSlot"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "UserProfile" },
+      "description": "User profiles authenticated via Firebase Google Sign-In"
+    },
+    "/candidates/{candidateId}": {
+      "schema": { "$ref": "CandidateApplication" },
+      "description": "Candidate job applications and AI resume summaries"
+    },
+    "/interviews/{interviewId}": {
+      "schema": { "$ref": "InterviewSession" },
+      "description": "AI Screening interview sessions, question progression and scorecards"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": { "$ref": "ScheduledInterview" },
+      "description": "Self-scheduled and recruiter-booked calendar interviews"
+    },
+    "/slots/{slotId}": {
+      "schema": { "$ref": "CalendarSlot" },
+      "description": "Available calendar time slots for candidate self-scheduling"
+    }
+  }
+}
