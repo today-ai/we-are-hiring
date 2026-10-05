@@ -36,6 +36,11 @@ service cloud.firestore {
     match /slots/{slotId} {
       allow read, write: if true;
     }
+
+    // System Settings & Email Configuration
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
   }
 }
 

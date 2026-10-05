@@ -158,13 +158,31 @@ export interface ScheduledInterview {
   calendarInviteSent: boolean;
 }
 
+export interface EmailConfiguration {
+  mode: 'default' | 'external';
+  senderEmail: string;
+  senderName: string;
+  replyToEmail: string;
+  provider: 'brevo' | 'resend';
+  apiKey?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPassword?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface EmailDispatchLog {
   id: string;
   to: string;
+  from?: string;
+  replyTo?: string;
   recipientName: string;
   subject: string;
-  type: 'application_acknowledgement' | 'screening_invitation' | 'interview_confirmed' | 'rejection_notice';
+  type: 'application_acknowledgement' | 'screening_invitation' | 'interview_confirmed' | 'rejection_notice' | 'test_dispatch';
   timestamp: string;
   contentHtml: string;
   status: 'Delivered' | 'Queued' | 'Opened';
+  providerUsed?: string;
 }

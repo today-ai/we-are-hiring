@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { CandidateApplication, JobPosting, CandidateScorecard, UserProfile } from '../types';
+import { CandidateApplication, JobPosting, CandidateScorecard, UserProfile, EmailConfiguration, EmailDispatchLog } from '../types';
 import { HiringAnalytics } from './HiringAnalytics';
+import { EmailConfigurationPanel } from './EmailConfigurationPanel';
 import { 
   Users, 
   Search, 
@@ -26,29 +27,36 @@ import {
   PlusCircle,
   Check,
   RotateCcw,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Mail
 } from 'lucide-react';
 
 interface AdminDashboardProps {
   candidates: CandidateApplication[];
   jobs: JobPosting[];
   currentUser?: UserProfile | null;
+  emailConfig: EmailConfiguration;
   onUpdateCandidateStatus: (candidateId: string, newStatus: CandidateApplication['status'], notes?: string) => void;
   onScheduleInterview: (candidate: CandidateApplication) => void;
   onDeleteCandidate?: (candidateId: string) => void;
   onAddNewJob?: (job: JobPosting) => void;
+  onSaveEmailConfig: (config: EmailConfiguration) => Promise<void>;
+  onSendTestEmail?: (email: EmailDispatchLog) => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   candidates,
   jobs,
   currentUser,
+  emailConfig,
   onUpdateCandidateStatus,
   onScheduleInterview,
   onDeleteCandidate,
-  onAddNewJob
+  onAddNewJob,
+  onSaveEmailConfig,
+  onSendTestEmail
 }) => {
-  const [dashboardTab, setDashboardTab] = useState<'pipeline' | 'analytics'>('pipeline');
+  const [dashboardTab, setDashboardTab] = useState<'pipeline' | 'analytics' | 'emailConfig'>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateApplication | null>(null);
@@ -260,12 +268,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Recharts
             </span>
           </button>
+
+          <button
+            onClick={() => setDashboardTab('emailConfig')}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all ${
+              dashboardTab === 'emailConfig'
+                ? 'bg-[#2563EB] text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Mail className="h-4 w-4 text-emerald-400" />
+            <span>Email Configuration</span>
+            <span className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-800/60">
+              {emailConfig.mode === 'default' ? 'airev.pk' : emailConfig.provider.toUpperCase()}
+            </span>
+          </button>
         </div>
       </div>
 
-      {/* Render Analytics Tab if active */}
+      {/* Render Analytics or Email Config or Candidate Pipeline Tab */}
       {dashboardTab === 'analytics' ? (
         <HiringAnalytics candidates={candidates} jobs={jobs} />
+      ) : dashboardTab === 'emailConfig' ? (
+        <EmailConfigurationPanel
+          config={emailConfig}
+          onSaveConfig={onSaveEmailConfig}
+          onSendTestEmail={onSendTestEmail}
+        />
       ) : (
         /* Render Candidate Pipeline Tab */
         <>
@@ -310,42 +339,104 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Filter and Candidate Table */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
-            {/* Table header controls */}
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-white">Candidate Screening Pipeline</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Review automated scorecards, skills match scores, and interview transcripts
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="relative min-w-[220px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder="Search candidates or roles..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 py-1.5 pl-8 pr-3 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
-                  />
+            {/* Table header controls with prominent text-based search bar */}
+            <div className="p-4 sm:p-6 border-b border-slate-800 space-y-4 bg-gradient-to-b from-slate-900/90 to-slate-950/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2.5">
+                    <span>Candidate Screening Pipeline</span>
+                    <span className="rounded-full bg-blue-500/20 text-blue-300 px-2.5 py-0.5 text-xs font-bold border border-blue-500/40">
+                      Showing {filteredCandidates.length} of {candidates.length} Applicants
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Search and filter applicants by candidate name, verified email address, or applied job title
+                  </p>
                 </div>
 
-                {/* Status segmented filters */}
-                <div className="flex items-center overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
-                  {['All', 'Shortlisted', 'Evaluated', 'Hold', 'Scheduled', 'Rejected'].map((status) => (
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/80 self-start sm:self-auto"
+                  >
+                    <span>Clear Search</span>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Text-Based Search Input Bar */}
+              <div className="relative w-full">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-400" />
+                <input
+                  type="text"
+                  placeholder="Search applicants by name (e.g. Bilal), email (e.g. candidate@domain.com), or job role (e.g. AI Systems)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-10 text-xs sm:text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all shadow-inner"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                    title="Clear search text"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Segmented Filter Bar and Quick Search Chips */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
+                {/* Status Filter Tabs */}
+                <div className="flex items-center overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-1">
+                  {['All', 'Shortlisted', 'Evaluated', 'Hold', 'Scheduled', 'Rejected'].map((status) => {
+                    const count = status === 'All' 
+                      ? candidates.length 
+                      : candidates.filter(c => c.status === status).length;
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => setStatusFilter(status)}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
+                          statusFilter === status
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>{status}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          statusFilter === status ? 'bg-blue-800 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Quick Search Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] text-slate-400">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold shrink-0">Quick Filter:</span>
+                  {jobs.slice(0, 3).map((job) => (
                     <button
-                      key={status}
-                      onClick={() => setStatusFilter(status)}
-                      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                        statusFilter === status
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                      key={job.id}
+                      onClick={() => setSearchQuery(job.title.split(' ')[0])}
+                      className="rounded-md border border-slate-800 bg-slate-950 px-2 py-0.5 hover:border-slate-700 hover:text-white transition-colors shrink-0 truncate max-w-[130px]"
+                      title={`Filter by ${job.title}`}
                     >
-                      {status}
+                      {job.title}
                     </button>
                   ))}
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="text-[10px] text-orange-400 hover:underline shrink-0"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -365,110 +456,138 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
-                  {filteredCandidates.map((candidate) => {
-                    const scorecard = candidate.scorecard;
-                    return (
-                      <tr
-                        key={candidate.id}
-                        className="hover:bg-slate-800/40 transition-colors cursor-pointer"
-                        onClick={() => {
-                          setSelectedCandidate(candidate);
-                          setRecruiterNoteText(candidate.recruiterNotes || '');
-                        }}
-                      >
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-white">{candidate.fullName}</div>
-                          <div className="text-[11px] text-slate-400">{candidate.email}</div>
-                        </td>
+                  {filteredCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 px-4 text-center">
+                        <div className="flex flex-col items-center justify-center space-y-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-800 text-slate-400">
+                            <Search className="h-6 w-6 text-blue-400" />
+                          </div>
+                          <div className="text-sm font-bold text-white">
+                            No applicants found matching &ldquo;{searchQuery || statusFilter}&rdquo;
+                          </div>
+                          <p className="text-xs text-slate-400 max-w-sm">
+                            Try searching with partial candidate name, email address, or job title keywords.
+                          </p>
+                          <button
+                            onClick={() => {
+                              setSearchQuery('');
+                              setStatusFilter('All');
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors shadow-sm"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            <span>Reset Search & Filters</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCandidates.map((candidate) => {
+                      const scorecard = candidate.scorecard;
+                      return (
+                        <tr
+                          key={candidate.id}
+                          className="hover:bg-slate-800/40 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setSelectedCandidate(candidate);
+                            setRecruiterNoteText(candidate.recruiterNotes || '');
+                          }}
+                        >
+                          <td className="py-3.5 px-4">
+                            <div className="font-semibold text-white">{candidate.fullName}</div>
+                            <div className="text-[11px] text-slate-400">{candidate.email}</div>
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          <div className="font-medium text-slate-200">{getJobTitle(candidate.jobId)}</div>
-                          <div className="text-[11px] text-slate-500">{candidate.yearsOfExperience} yrs exp</div>
-                        </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-medium text-slate-200">{getJobTitle(candidate.jobId)}</div>
+                            <div className="text-[11px] text-slate-500">{candidate.yearsOfExperience} yrs exp</div>
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          {scorecard ? (
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white text-sm">
-                                {scorecard.overallScore}%
-                              </span>
-                              <div className="h-1.5 w-12 rounded-full bg-slate-800 overflow-hidden">
-                                <div
-                                  className="h-full bg-blue-500"
-                                  style={{ width: `${scorecard.overallScore}%` }}
-                                />
+                          <td className="py-3.5 px-4">
+                            {scorecard ? (
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-sm">
+                                  {scorecard.overallScore}%
+                                </span>
+                                <div className="h-1.5 w-12 rounded-full bg-slate-800 overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500"
+                                    style={{ width: `${scorecard.overallScore}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 italic">Screening...</span>
-                          )}
-                        </td>
+                            ) : (
+                              <span className="text-slate-500 italic">Screening...</span>
+                            )}
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          {scorecard ? (
-                            <span className="font-semibold text-emerald-400">
-                              {scorecard.technicalScore}%
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">—</span>
-                          )}
-                        </td>
+                          <td className="py-3.5 px-4">
+                            {scorecard ? (
+                              <span className="font-semibold text-emerald-400">
+                                {scorecard.technicalScore}%
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">—</span>
+                            )}
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          {scorecard ? (
-                            <span className={`font-semibold ${
-                              scorecard.recommendation === 'SHORTLIST'
-                                ? 'text-emerald-400'
-                                : (scorecard.recommendation === 'HOLD' ? 'text-amber-400' : 'text-rose-400')
+                          <td className="py-3.5 px-4">
+                            {scorecard ? (
+                              <span className={`font-semibold ${
+                                scorecard.recommendation === 'SHORTLIST'
+                                  ? 'text-emerald-400'
+                                  : (scorecard.recommendation === 'HOLD' ? 'text-amber-400' : 'text-rose-400')
+                              }`}>
+                                {scorecard.recommendation}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">In Progress</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className={`font-medium px-2 py-0.5 rounded text-[11px] ${
+                              candidate.status === 'Shortlisted' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60' :
+                              candidate.status === 'Scheduled' ? 'bg-sky-950 text-sky-300 border border-sky-800/60' :
+                              candidate.status === 'Rejected' ? 'bg-rose-950 text-rose-300 border border-rose-800/60' :
+                              'bg-slate-800 text-slate-300'
                             }`}>
-                              {scorecard.recommendation}
+                              {candidate.status}
                             </span>
-                          ) : (
-                            <span className="text-slate-500">In Progress</span>
-                          )}
-                        </td>
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          <span className={`font-medium px-2 py-0.5 rounded text-[11px] ${
-                            candidate.status === 'Shortlisted' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60' :
-                            candidate.status === 'Scheduled' ? 'bg-sky-950 text-sky-300 border border-sky-800/60' :
-                            candidate.status === 'Rejected' ? 'bg-rose-950 text-rose-300 border border-rose-800/60' :
-                            'bg-slate-800 text-slate-300'
-                          }`}>
-                            {candidate.status}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setSelectedCandidate(candidate);
-                                setRecruiterNoteText(candidate.recruiterNotes || '');
-                              }}
-                              className="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
-                            >
-                              Manage Dossier
-                            </button>
-
-                            {onDeleteCandidate && (
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => {
-                                  if (confirm(`Portal Manager Confirmation:\nAre you sure you want to permanently delete candidate ${candidate.fullName} from Firestore?`)) {
-                                    onDeleteCandidate(candidate.id);
-                                  }
+                                  setSelectedCandidate(candidate);
+                                  setRecruiterNoteText(candidate.recruiterNotes || '');
                                 }}
-                                title="Delete candidate from Firestore"
-                                className="rounded p-1 text-slate-500 hover:bg-rose-950 hover:text-rose-400 transition-colors"
+                                className="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                Manage Dossier
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+
+                              {onDeleteCandidate && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Portal Manager Confirmation:\nAre you sure you want to permanently delete candidate ${candidate.fullName} from Firestore?`)) {
+                                      onDeleteCandidate(candidate.id);
+                                    }
+                                  }}
+                                  title="Delete candidate from Firestore"
+                                  className="rounded p-1 text-slate-500 hover:bg-rose-950 hover:text-rose-400 transition-colors"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>

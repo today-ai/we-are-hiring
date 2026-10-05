@@ -23,7 +23,20 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { UserProfile, CandidateApplication, ScheduledInterview, CalendarSlot } from '../types';
+import { UserProfile, CandidateApplication, ScheduledInterview, CalendarSlot, EmailConfiguration } from '../types';
+
+export const DEFAULT_EMAIL_CONFIG: EmailConfiguration = {
+  mode: 'default',
+  senderEmail: 'airev.pk@gmail.com',
+  senderName: 'AIREV Emerging Center Karachi',
+  replyToEmail: 'hr@airev.pk',
+  provider: 'brevo',
+  apiKey: '',
+  smtpHost: 'smtp-relay.brevo.com',
+  smtpPort: 587,
+  smtpUser: '',
+  smtpPassword: ''
+};
 
 // Designated Portal Managers / Super Admins with full power
 export const ADMIN_PORTAL_MANAGERS: string[] = [
@@ -67,7 +80,77 @@ async function testFirestoreConnection() {
 }
 testFirestoreConnection();
 
-// Authentication API
+// Authentication API & Session Storage
+const SESSION_STORAGE_KEY = 'airev_active_auth_profile';
+
+export function getLocalStoredSession(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Error reading local session:', e);
+  }
+  return null;
+}
+
+export function setLocalStoredSession(profile: UserProfile | null): void {
+  try {
+    if (profile) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.warn('Error saving local session:', e);
+  }
+}
+
+export async function directSignInWithEmail(email: string, customName?: string): Promise<UserProfile> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const isManager = isPortalManagerEmail(normalizedEmail);
+  const cleanUid = `uid_${normalizedEmail.replace(/[^a-z0-9]/g, '_')}`;
+
+  let existingData: Partial<UserProfile> = {};
+  try {
+    const userDocRef = doc(db, 'users', cleanUid);
+    const snap = await getDoc(userDocRef);
+    if (snap.exists()) {
+      existingData = snap.data() as UserProfile;
+    }
+  } catch (e) {
+    console.warn('Could not read existing doc in directSignIn:', e);
+  }
+
+  const profile: UserProfile = {
+    uid: cleanUid,
+    email: normalizedEmail,
+    displayName: customName || existingData.displayName || (normalizedEmail === 'shakeelsaeedofficial@gmail.com' ? 'Muhammad Shakeel' : (normalizedEmail === 'airev.pk@gmail.com' ? 'AIREV Systems Admin' : normalizedEmail.split('@')[0])),
+    photoURL: existingData.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(customName || normalizedEmail)}`,
+    phoneNumber: existingData.phoneNumber || (isManager ? '+92 300 1234567' : ''),
+    whatsappAvailable: existingData.whatsappAvailable ?? true,
+    city: existingData.city || 'Karachi',
+    linkedInUrl: existingData.linkedInUrl || '',
+    portfolioUrl: existingData.portfolioUrl || '',
+    bio: existingData.bio || (isManager ? 'AIREV Portal Manager & Systems Architect, Karachi' : 'Candidate'),
+    role: isManager ? 'admin' : (existingData.role || (normalizedEmail.includes('recruiter') ? 'recruiter' : 'candidate')),
+    isPortalManager: isManager,
+    permissions: isManager ? [
+      'manage_jobs',
+      'manage_pipeline',
+      'manage_candidates',
+      'manage_interviewers',
+      'export_data',
+      'override_scores',
+      'delete_records',
+      'manage_slots'
+    ] : existingData.permissions
+  };
+
+  await syncUserProfile(profile);
+  setLocalStoredSession(profile);
+  return profile;
+}
+
 export async function signInWithGoogle(): Promise<UserProfile | null> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
@@ -111,6 +194,7 @@ export async function signInWithGoogle(): Promise<UserProfile | null> {
       ] : existingData.permissions
     };
     await syncUserProfile(profile);
+    setLocalStoredSession(profile);
     return profile;
   } catch (err: any) {
     console.error('Google Sign-In failed:', err);
@@ -119,7 +203,12 @@ export async function signInWithGoogle(): Promise<UserProfile | null> {
 }
 
 export async function signOutUser(): Promise<void> {
-  await signOut(auth);
+  setLocalStoredSession(null);
+  try {
+    await signOut(auth);
+  } catch (e) {
+    console.warn('SignOut warning:', e);
+  }
 }
 
 export async function saveUserProfile(updatedFields: Partial<UserProfile> & { uid: string }): Promise<void> {
@@ -136,9 +225,18 @@ export async function saveUserProfile(updatedFields: Partial<UserProfile> & { ui
 }
 
 export function subscribeToAuth(callback: (user: UserProfile | null) => void) {
+  // Check local stored session first so user isn't logged out on refresh
+  const storedSession = getLocalStoredSession();
+  if (storedSession) {
+    callback(storedSession);
+  }
+
   return onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
     if (!firebaseUser) {
-      callback(null);
+      const active = getLocalStoredSession();
+      if (!active) {
+        callback(null);
+      }
       return;
     }
 
@@ -165,6 +263,7 @@ export function subscribeToAuth(callback: (user: UserProfile | null) => void) {
           ];
           await syncUserProfile(data);
         }
+        setLocalStoredSession(data);
         callback(data);
       } else {
         const newProfile: UserProfile = {
@@ -172,6 +271,9 @@ export function subscribeToAuth(callback: (user: UserProfile | null) => void) {
           email: firebaseUser.email || '',
           displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Portal User',
           photoURL: firebaseUser.photoURL || undefined,
+          phoneNumber: isManager ? '+92 300 0000000' : '',
+          whatsappAvailable: true,
+          city: 'Karachi',
           role: isManager ? 'admin' : (firebaseUser.email?.includes('recruiter') ? 'recruiter' : 'candidate'),
           isPortalManager: isManager,
           permissions: isManager ? [
@@ -186,19 +288,23 @@ export function subscribeToAuth(callback: (user: UserProfile | null) => void) {
           ] : undefined
         };
         await syncUserProfile(newProfile);
+        setLocalStoredSession(newProfile);
         callback(newProfile);
       }
     } catch (err) {
       // Fallback profile if Firestore read fails
       const isManager = isPortalManagerEmail(firebaseUser.email);
-      callback({
+      const fallback: UserProfile = {
         uid: firebaseUser.uid,
         email: firebaseUser.email || '',
         displayName: firebaseUser.displayName || 'User',
         photoURL: firebaseUser.photoURL || undefined,
+        phoneNumber: isManager ? '+92 300 0000000' : '',
         role: isManager ? 'admin' : 'candidate',
         isPortalManager: isManager
-      });
+      };
+      setLocalStoredSession(fallback);
+      callback(fallback);
     }
   });
 }
@@ -298,5 +404,32 @@ export async function bookSlotInFirestore(slotId: string, bookedByEmail: string)
     });
   } catch (err) {
     console.warn('Could not update slot booking:', err);
+  }
+}
+
+// System Email Configuration Persistence
+export async function fetchEmailConfiguration(): Promise<EmailConfiguration> {
+  try {
+    const configDoc = doc(db, 'settings', 'email_configuration');
+    const snap = await getDoc(configDoc);
+    if (snap.exists()) {
+      return { ...DEFAULT_EMAIL_CONFIG, ...snap.data() } as EmailConfiguration;
+    }
+  } catch (err) {
+    console.warn('Could not fetch email config from Firestore:', err);
+  }
+  return DEFAULT_EMAIL_CONFIG;
+}
+
+export async function persistEmailConfiguration(config: EmailConfiguration): Promise<void> {
+  try {
+    const configDoc = doc(db, 'settings', 'email_configuration');
+    await setDoc(configDoc, {
+      ...config,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Could not save email configuration to Firestore:', err);
+    throw err;
   }
 }

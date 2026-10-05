@@ -35,11 +35,19 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({ email, onC
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">From:</span>
-            <span className="text-slate-300">Talent Acquisition &lt;hiring@company.ai&gt;</span>
+            <span className="text-slate-200 font-medium">{email.from || 'AIREV Emerging Center <airev.pk@gmail.com>'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-orange-400 font-semibold">Reply-To:</span>
+            <span className="text-orange-300 font-medium">{email.replyTo || 'hr@airev.pk'}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Subject:</span>
             <span className="font-semibold text-indigo-300">{email.subject}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Provider Service:</span>
+            <span className="text-slate-400 font-mono text-[11px]">{email.providerUsed || 'Default (airev.pk@gmail.com)'}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Sent:</span>

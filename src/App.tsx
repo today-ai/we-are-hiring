@@ -20,6 +20,7 @@ import { CandidateCalendarPortal } from './components/CandidateCalendarPortal';
 import { CandidateResourceCenter } from './components/CandidateResourceCenter';
 import { ArchitectureBlueprint } from './components/ArchitectureBlueprint';
 import { ProfileManagementModal } from './components/ProfileManagementModal';
+import { AuthModal } from './components/AuthModal';
 import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { 
   subscribeToAuth, 
@@ -29,8 +30,12 @@ import {
   deleteCandidateApplication,
   fetchAllCandidateApplications,
   persistScheduledInterview,
-  fetchAllScheduledInterviews
+  fetchAllScheduledInterviews,
+  fetchEmailConfiguration,
+  persistEmailConfiguration,
+  DEFAULT_EMAIL_CONFIG
 } from './services/firebase';
+import { EmailConfiguration } from './types';
 import { 
   Bot, 
   Mail, 
@@ -58,8 +63,11 @@ export default function App() {
   const [schedulingCandidate, setSchedulingCandidate] = useState<CandidateApplication | null>(null);
   const [prepTargetJobId, setPrepTargetJobId] = useState<string>(OPEN_JOBS[0].id);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
 
-  // Transactional email preview
+  // Transactional email preview & system config
+  const [emailConfig, setEmailConfig] = useState<EmailConfiguration>(DEFAULT_EMAIL_CONFIG);
   const [previewEmail, setPreviewEmail] = useState<EmailDispatchLog | null>(null);
   const [latestNotification, setLatestNotification] = useState<{ title: string; subtitle: string; email?: EmailDispatchLog } | null>(null);
 
@@ -87,6 +95,9 @@ export default function App() {
         if (firestoreSchedules.length > 0) {
           setScheduledInterviews(firestoreSchedules);
         }
+
+        const savedEmailConfig = await fetchEmailConfiguration();
+        setEmailConfig(savedEmailConfig);
       } catch (err) {
         console.warn('Could not load Firestore data:', err);
       }
@@ -96,7 +107,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Handle Google Sign-In
+  // Handle Google Sign-In with Automatic Diagnostic & 1-Click Fallback
   const handleGoogleSignIn = async () => {
     try {
       const profile = await signInWithGoogle();
@@ -108,10 +119,9 @@ export default function App() {
         });
       }
     } catch (err: any) {
-      setLatestNotification({
-        title: 'Sign In Notice',
-        subtitle: err?.message || 'Could not complete Google Sign-In popup.'
-      });
+      console.warn('Google Sign-In caught error:', err);
+      setAuthErrorMessage(err?.message || 'Firebase Google Sign-In could not complete.');
+      setIsAuthModalOpen(true);
     }
   };
 
@@ -140,11 +150,14 @@ export default function App() {
     const ackEmail: EmailDispatchLog = {
       id: `email-${Date.now()}`,
       to: newApp.email,
+      from: `${emailConfig.senderName} <${emailConfig.senderEmail}>`,
+      replyTo: emailConfig.replyToEmail,
       recipientName: newApp.fullName,
-      subject: `Application Received: ${matchedJob.title} at AIREV Emerging Center`,
+      subject: `Application Received: ${matchedJob.title} - AIREV Emerging Center Karachi`,
       type: 'application_acknowledgement',
       timestamp: new Date().toISOString(),
       status: 'Delivered',
+      providerUsed: emailConfig.mode === 'default' ? 'Default (airev.pk@gmail.com)' : `${emailConfig.provider.toUpperCase()} API`,
       contentHtml: `
         <div style="font-family: sans-serif; line-height: 1.6; color: #1e293b;">
           <h2 style="color: #2563eb; margin-bottom: 8px;">Hi ${newApp.fullName},</h2>
@@ -271,6 +284,25 @@ export default function App() {
     });
   };
 
+  // Email Configuration Handlers
+  const handleSaveEmailConfig = async (updated: EmailConfiguration) => {
+    await persistEmailConfiguration(updated);
+    setEmailConfig(updated);
+    setLatestNotification({
+      title: 'Email Configuration Saved',
+      subtitle: `Delivery mode set to ${updated.mode === 'default' ? 'Default (airev.pk@gmail.com)' : updated.provider.toUpperCase()} with Reply-To: ${updated.replyToEmail}.`
+    });
+  };
+
+  const handleSendTestEmail = (testLog: EmailDispatchLog) => {
+    setPreviewEmail(testLog);
+    setLatestNotification({
+      title: 'Test Verification Email Ready',
+      subtitle: `Headers inspected: From ${testLog.from} | Reply-To: ${testLog.replyTo}`,
+      email: testLog
+    });
+  };
+
   // Schedule interview triggers
   const handleStartScheduling = (candidate: CandidateApplication) => {
     setSchedulingCandidate(candidate);
@@ -297,11 +329,14 @@ export default function App() {
     const schedEmail: EmailDispatchLog = {
       id: `email-sched-${Date.now()}`,
       to: scheduled.candidateEmail,
+      from: `${emailConfig.senderName} <${emailConfig.senderEmail}>`,
+      replyTo: emailConfig.replyToEmail,
       recipientName: scheduled.candidateName,
-      subject: `Confirmed: ${scheduled.interviewType} with ${scheduled.interviewerName}`,
+      subject: `Confirmed: ${scheduled.interviewType} with ${scheduled.interviewerName} - AIREV Karachi`,
       type: 'interview_confirmed',
       timestamp: new Date().toISOString(),
       status: 'Delivered',
+      providerUsed: emailConfig.mode === 'default' ? 'Default (airev.pk@gmail.com)' : `${emailConfig.provider.toUpperCase()} API`,
       contentHtml: `
         <div style="font-family: sans-serif; line-height: 1.6; color: #1e293b;">
           <h2 style="color: #059669; margin-bottom: 8px;">Interview Confirmed & Calendar Synced!</h2>
@@ -402,10 +437,13 @@ export default function App() {
             candidates={candidates}
             jobs={jobs}
             currentUser={currentUser}
+            emailConfig={emailConfig}
             onUpdateCandidateStatus={handleUpdateCandidateStatus}
             onScheduleInterview={handleStartScheduling}
             onDeleteCandidate={handleDeleteCandidate}
             onAddNewJob={handleAddNewJob}
+            onSaveEmailConfig={handleSaveEmailConfig}
+            onSendTestEmail={handleSendTestEmail}
           />
         )}
 
@@ -481,6 +519,22 @@ export default function App() {
         <EmailPreviewModal
           email={previewEmail}
           onClose={() => setPreviewEmail(null)}
+        />
+      )}
+
+      {/* Firebase Authentication Diagnostic & Direct Access Modal */}
+      {isAuthModalOpen && (
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          initialError={authErrorMessage}
+          onAuthenticated={(profile) => {
+            setCurrentUser(profile);
+            setLatestNotification({
+              title: `Welcome, ${profile.displayName}!`,
+              subtitle: `Active session established as ${profile.isPortalManager ? 'Portal Manager (Full Power)' : profile.role}.`
+            });
+          }}
         />
       )}
     </div>
